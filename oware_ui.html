@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oware Opening Explorer</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #222222;
+    --border: #2e2e2e;
+    --border2: #3a3a3a;
+    --text: #e8e4dc;
+    --text2: #8a8680;
+    --text3: #5a5650;
+    --viable: #2d5a3d;
+    --viable-border: #3d7a52;
+    --viable-text: #7ecf9a;
+    --unviable: #5a2d2d;
+    --unviable-border: #7a3d3d;
+    --unviable-text: #cf7e7e;
+    --neutral: #2a2820;
+    --neutral-border: #3a3830;
+    --neutral-text: #c8b87a;
+    --accent: #c8a96e;
+    --radius: 8px;
+    --pit-size: 58px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; min-height: 100vh; }
+
+  header { border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: baseline; gap: 1.5rem; }
+  header h1 { font-size: 17px; font-weight: normal; letter-spacing: .04em; color: var(--accent); }
+  #db-status { font-size: 12px; color: var(--text3); font-family: monospace; }
+
+  .layout { display: grid; grid-template-columns: 1fr 280px; gap: 0; height: calc(100vh - 53px); }
+
+  .main { padding: 1.5rem 2rem; overflow-y: auto; border-right: 1px solid var(--border); }
+  .sidebar { padding: 1.25rem; overflow-y: auto; background: var(--surface); }
+
+  /* Board */
+  .board-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .side-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: .5rem; font-family: monospace; }
+  .pit-row { display: flex; gap: 8px; align-items: center; justify-content: center; }
+  .pit {
+    width: var(--pit-size); height: var(--pit-size); border-radius: 50%;
+    border: 1.5px solid var(--border2); background: var(--surface2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: default; transition: border-color .12s, background .12s; position: relative;
+    user-select: none;
+  }
+  .pit.clickable { cursor: pointer; border-color: var(--border2); }
+  .pit.clickable:hover { border-color: var(--accent); background: #2a2518; }
+  .pit.best { border-color: var(--viable-border) !important; background: #1a2e22 !important; }
+  .pit.worst { border-color: var(--unviable-border) !important; }
+  .pit.selected { border-color: var(--accent) !important; background: #2a2518 !important; box-shadow: 0 0 0 2px var(--accent); }
+  .pit-seeds { font-size: 20px; font-weight: bold; color: var(--text); line-height: 1; }
+  .pit-score { font-size: 9px; color: var(--text3); margin-top: 2px; font-family: monospace; }
+  .pit-idx { font-size: 8px; color: var(--text3); position: absolute; bottom: 4px; font-family: monospace; }
+  .score-cell {
+    width: 56px; height: var(--pit-size); border-radius: var(--radius);
+    background: var(--neutral); border: 1px solid var(--neutral-border);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  .score-cell-label { font-size: 9px; color: var(--neutral-text); letter-spacing: .05em; text-transform: uppercase; font-family: monospace; }
+  .score-cell-val { font-size: 18px; font-weight: bold; color: var(--neutral-text); }
+  .divider { height: 1px; background: var(--border); margin: .75rem 0; }
+
+  /* Turn / result banner */
+  .banner { border-radius: var(--radius); padding: .6rem 1rem; margin-bottom: 1rem; font-size: 13px; display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
+  .banner.viable { background: var(--viable); border: 1px solid var(--viable-border); color: var(--viable-text); }
+  .banner.unviable { background: var(--unviable); border: 1px solid var(--unviable-border); color: var(--unviable-text); }
+  .banner.neutral { background: var(--neutral); border: 1px solid var(--neutral-border); color: var(--neutral-text); }
+  .banner strong { font-size: 14px; }
+  .badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-family: monospace; border: 1px solid currentColor; opacity: .7; }
+
+  /* Controls */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  button { padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; font-family: inherit; letter-spacing: .02em; transition: border-color .1s, background .1s; }
+  button:hover { border-color: var(--accent); background: #2a2518; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .35; cursor: default; }
+
+  /* Move table */
+  .move-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 1.25rem; }
+  .move-table th { text-align: left; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); padding: 0 8px 6px; font-weight: normal; font-family: monospace; }
+  .move-table td { padding: 7px 8px; border-top: 1px solid var(--border); }
+  .move-table tr { cursor: pointer; transition: background .1s; }
+  .move-table tr:hover td { background: var(--surface2); }
+  .move-row.viable-row td:first-child { border-left: 2px solid var(--viable-border); }
+  .move-row.unviable-row td:first-child { border-left: 2px solid var(--unviable-border); }
+  .score-pill { font-family: monospace; font-size: 12px; }
+  .score-pos { color: var(--viable-text); }
+  .score-neg { color: var(--unviable-text); }
+  .score-zero { color: var(--neutral-text); }
+  .source-tag { font-size: 10px; color: var(--text3); font-family: monospace; }
+
+  /* Move history breadcrumb */
+  .history-wrap { margin-bottom: 1rem; }
+  .history-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: .4rem; font-family: monospace; }
+  .history-crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .crumb { font-size: 11px; font-family: monospace; padding: 2px 8px; border-radius: 20px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2); cursor: pointer; }
+  .crumb:hover { border-color: var(--accent); color: var(--accent); }
+  .crumb.root { color: var(--accent); border-color: var(--accent); }
+  .crumb-arrow { color: var(--text3); font-size: 11px; }
+
+  /* Sidebar — openings */
+  .sidebar h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 1rem; font-weight: normal; font-family: monospace; }
+  .opening-form { margin-bottom: 1rem; }
+  .opening-form input, .opening-form textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border2); border-radius: var(--radius);
+    color: var(--text); font-size: 12px; padding: 6px 8px; margin-bottom: 6px; font-family: inherit;
+    resize: vertical;
+  }
+  .opening-form input:focus, .opening-form textarea:focus { outline: none; border-color: var(--accent); }
+  .opening-item { border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem; margin-bottom: .5rem; cursor: pointer; transition: border-color .1s; }
+  .opening-item:hover { border-color: var(--accent); }
+  .opening-name { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+  .opening-moves { font-size: 11px; font-family: monospace; color: var(--text3); margin-bottom: 4px; }
+  .opening-note { font-size: 11px; color: var(--text2); line-height: 1.5; }
+  .opening-actions { display: flex; gap: 4px; margin-top: .5rem; }
+  .opening-actions button { font-size: 10px; padding: 3px 8px; }
+  .empty-state { font-size: 12px; color: var(--text3); line-height: 1.7; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Oware Opening Explorer</h1>
+  <span id="db-status">connecting…</span>
+</header>
+
+<div class="layout">
+<div class="main">
+
+  <div id="banner" class="banner neutral">
+    <strong>Loading…</strong>
+  </div>
+
+  <div class="board-wrap">
+    <div class="side-label">North's pits — 6 · 7 · 8 · 9 · 10 · 11 ↔ N score</div>
+    <div class="pit-row" id="north-row"></div>
+    <div class="divider"></div>
+    <div class="pit-row" id="south-row"></div>
+    <div class="side-label" style="margin-top:.5rem;margin-bottom:0">S score ↔ South's pits — 0 · 1 · 2 · 3 · 4 · 5</div>
+  </div>
+
+  <div class="history-wrap">
+    <div class="history-label">Line</div>
+    <div class="history-crumbs" id="breadcrumb"></div>
+  </div>
+
+  <div class="controls">
+    <button onclick="undoMove()" id="btn-undo" disabled>← Undo</button>
+    <button onclick="resetBoard()">Reset to start</button>
+    <button onclick="toggleTurn()" id="btn-turn">Switch turn</button>
+    <button class="primary" onclick="saveCurrentLine()" id="btn-save">Save this line…</button>
+  </div>
+
+  <table class="move-table" id="move-table">
+    <thead><tr>
+      <th>Pit</th><th>Seeds</th><th>Score</th><th>Verdict</th><th>Source</th>
+    </tr></thead>
+    <tbody id="move-tbody"></tbody>
+  </table>
+
+</div>
+
+<div class="sidebar">
+  <h2>Saved openings &amp; systems</h2>
+
+  <div class="opening-form" id="save-form" style="display:none">
+    <input type="text" id="opening-name" placeholder="Name (e.g. South aggressive open)">
+    <textarea id="opening-note" rows="3" placeholder="Notes — what's the idea behind this line?"></textarea>
+    <div style="display:flex;gap:6px">
+      <button onclick="confirmSave()" class="primary">Save</button>
+      <button onclick="cancelSave()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="openings-list"></div>
+</div>
+</div>
+
+<script>
+const API = 'http://localhost:5000/api';
+const INITIAL = [4,4,4,4,4,4,4,4,4,4,4,4,0,0];
+
+let board = [...INITIAL];
+let player = 0;
+let history = []; // [{board, player, pit}]
+let moveData = []; // current move analysis
+let analysing = false;
+
+// ---------------------------------------------------------------------------
+// Game logic (browser copy)
+// ---------------------------------------------------------------------------
+function pitRange(p){ return p===0?[0,1,2,3,4,5]:[6,7,8,9,10,11]; }
+function oppRange(p){ return p===0?[6,7,8,9,10,11]:[0,1,2,3,4,5]; }
+
+function legalMoves(b, p){
+  const mine = pitRange(p).filter(i=>b[i]>0);
+  if(!mine.length) return [];
+  const opp = oppRange(p).reduce((s,i)=>s+b[i],0);
+  if(opp>0) return mine;
+  const feed = mine.filter(i=>b[i]>=(p===0?12-i:i-5));
+  return feed.length?feed:mine;
+}
+
+function applyMove(b, p, pit){
+  b=[...b]; let seeds=b[pit]; b[pit]=0; let idx=pit;
+  while(seeds>0){idx=(idx+1)%12;if(idx===pit)idx=(idx+1)%12;b[idx]++;seeds--;}
+  const opp=oppRange(p); let cap=0,i=idx;
+  while(opp.includes(i)&&(b[i]===2||b[i]===3)){cap+=b[i];b[i]=0;i=(i-1+12)%12;}
+  if(cap>0){
+    const rem=opp.reduce((s,j)=>s+b[j],0);
+    if(rem===0){b=[...arguments[0]];let s2=b[pit];b[pit]=0;let i2=pit;while(s2>0){i2=(i2+1)%12;if(i2===pit)i2=(i2+1)%12;b[i2]++;s2--;}}
+    else b[p===0?12:13]+=cap;
+  }
+  return b;
+}
+
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
+async function fetchStats(){
+  try{
+    const r=await fetch(`${API}/stats`);
+    const d=await r.json();
+    document.getElementById('db-status').textContent=
+      `DB: ${d.total.toLocaleString()} positions (${d.viable.toLocaleString()} viable / ${d.unviable.toLocaleString()} unviable)`;
+  } catch(e){
+    document.getElementById('db-status').textContent='DB: not connected — is oware_server.py running?';
+  }
+}
+
+async function fetchAnalysis(b, p){
+  const boardStr=b.join(',');
+  try{
+    const r=await fetch(`${API}/analyse?board=${boardStr}&player=${p}`);
+    return await r.json();
+  } catch(e){ return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+function renderBoard(scores){
+  const nRow=document.getElementById('north-row');
+  const sRow=document.getElementById('south-row');
+  nRow.innerHTML=''; sRow.innerHTML='';
+
+  const legal=legalMoves(board,player);
+  const scoreMap={};
+  if(scores) scores.forEach(m=>scoreMap[m.pit]=m);
+
+  // Score boxes
+  const nsBox=`<div class="score-cell"><div class="score-cell-label">N score</div><div class="score-cell-val">${board[13]}</div></div>`;
+  const ssBox=`<div class="score-cell"><div class="score-cell-label">S score</div><div class="score-cell-val">${board[12]}</div></div>`;
+
+  // Find best move
+  const bestPit = scores && scores.length ? scores[0].pit : null;
+
+  function pitHTML(i, isLegal, sm){
+    const cls=['pit',isLegal?'clickable':'',sm&&i===bestPit&&isLegal?'best':'',sm&&!sm.viable&&isLegal?'worst':''].filter(Boolean).join(' ');
+    return `<div class="${cls}" onclick="${isLegal?`clickPit(${i})`:''}">
+        <span class="pit-seeds">${board[i]}</span>
+        ${sm&&isLegal?`<span class="pit-score">${sm.score>0?'+':''}${sm.score}</span>`:''}
+        <span class="pit-idx">${i}</span>
+      </div>`;
+  }
+
+  // North row: pits 6→11 left to right (so pit 6 is above pit 5, pit 11 above pit 0)
+  // North score box goes on the RIGHT end
+  nRow.insertAdjacentHTML('beforeend', nsBox);
+  for(let i=11;i>=6;i--){
+    const isLegal=legal.includes(i)&&player===1;
+    nRow.insertAdjacentHTML('beforeend', pitHTML(i, isLegal, scoreMap[i]));
+  }
+
+  // South row: pits 0→5 left to right, score box on the LEFT end
+  sRow.insertAdjacentHTML('beforeend', ssBox);
+  for(let i=0;i<6;i++){
+    const isLegal=legal.includes(i)&&player===0;
+    sRow.insertAdjacentHTML('beforeend', pitHTML(i, isLegal, scoreMap[i]));
+  }
+}
+
+function renderBanner(posResult){
+  const el=document.getElementById('banner');
+  const side=player===0?'South':'North';
+  if(!posResult){
+    el.className='banner neutral';
+    el.innerHTML=`<strong>${side} to move</strong> <span class="badge">analysing…</span>`;
+    return;
+  }
+  const viable=posResult.viable;
+  el.className='banner '+(viable?'viable':'unviable');
+  const verdict=viable?'Viable':'Unviable';
+  const score=posResult.score;
+  el.innerHTML=`<strong>${side} to move — ${verdict}</strong> <span class="badge">score ${score>0?'+':''}${score} · ${posResult.source}</span>`;
+}
+
+function renderMoveTable(moves){
+  const tbody=document.getElementById('move-tbody');
+  tbody.innerHTML='';
+  if(!moves||!moves.length){
+    tbody.innerHTML='<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:12px 8px">No legal moves — terminal position.</td></tr>';
+    return;
+  }
+  moves.forEach(m=>{
+    const scoreClass=m.score>0?'score-pos':m.score<0?'score-neg':'score-zero';
+    const verdict=m.viable?`<span style="color:var(--viable-text)">viable</span>`:`<span style="color:var(--unviable-text)">unviable</span>`;
+    const tr=document.createElement('tr');
+    tr.className='move-row '+(m.viable?'viable-row':'unviable-row');
+    tr.innerHTML=`
+      <td style="font-family:monospace">pit ${m.pit}</td>
+      <td style="font-family:monospace">${m.seeds}</td>
+      <td><span class="score-pill ${scoreClass}">${m.score>0?'+':''}${m.score}</span></td>
+      <td>${verdict}</td>
+      <td><span class="source-tag">${m.source}</span></td>`;
+    tr.onclick=()=>clickPit(m.pit);
+    tbody.appendChild(tr);
+  });
+}
+
+function renderBreadcrumb(){
+  const el=document.getElementById('breadcrumb');
+  el.innerHTML='';
+  el.insertAdjacentHTML('beforeend','<span class="crumb root" onclick="jumpTo(0)">start</span>');
+  history.forEach((h,idx)=>{
+    el.insertAdjacentHTML('beforeend','<span class="crumb-arrow">›</span>');
+    const side=h.player===0?'S':'N';
+    el.insertAdjacentHTML('beforeend',`<span class="crumb" onclick="jumpTo(${idx+1})">${side}:p${h.pit}</span>`);
+  });
+  document.getElementById('btn-undo').disabled=history.length===0;
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+async function analyse(){
+  analysing=true;
+  renderBanner(null);
+  renderMoveTable(null);
+  renderBoard(null);
+
+  const data=await fetchAnalysis(board,player);
+  analysing=false;
+
+  if(!data){
+    document.getElementById('banner').innerHTML='<strong>Server not reachable</strong> — make sure oware_server.py is running in Command Prompt.';
+    return;
+  }
+
+  moveData=data.moves;
+  renderBanner(data.position);
+  renderBoard(data.moves);
+  renderMoveTable(data.moves);
+}
+
+function clickPit(pit){
+  if(analysing) return;
+  if(!legalMoves(board,player).includes(pit)) return;
+  history.push({board:[...board],player,pit});
+  board=applyMove(board,player,pit);
+  player=1-player;
+  renderBreadcrumb();
+  analyse();
+}
+
+function undoMove(){
+  if(!history.length) return;
+  const prev=history.pop();
+  board=[...prev.board];
+  player=prev.player;
+  renderBreadcrumb();
+  analyse();
+}
+
+function resetBoard(){
+  board=[...INITIAL]; player=0; history=[];
+  renderBreadcrumb();
+  analyse();
+}
+
+function toggleTurn(){
+  player=1-player;
+  analyse();
+}
+
+function jumpTo(idx){
+  if(idx===0){ resetBoard(); return; }
+  const h=history[idx-1];
+  board=[...h.board];
+  player=h.player;
+  // Play that move
+  board=applyMove(board,player,h.pit);
+  player=1-player;
+  history=history.slice(0,idx);
+  renderBreadcrumb();
+  analyse();
+}
+
+// ---------------------------------------------------------------------------
+// Openings
+// ---------------------------------------------------------------------------
+function lineString(){
+  return history.map(h=>(h.player===0?'S':'N')+':p'+h.pit).join(' → ');
+}
+
+function saveCurrentLine(){
+  document.getElementById('save-form').style.display='block';
+  document.getElementById('opening-name').focus();
+}
+
+function cancelSave(){
+  document.getElementById('save-form').style.display='none';
+}
+
+async function confirmSave(){
+  const name=document.getElementById('opening-name').value.trim();
+  if(!name) return;
+  const note=document.getElementById('opening-note').value.trim();
+  const openings=await loadOpenings();
+  openings.push({
+    id: Date.now(),
+    name,
+    note,
+    line: lineString(),
+    history: history.map(h=>({board:h.board,player:h.player,pit:h.pit})),
+    saved: new Date().toISOString()
+  });
+  await saveOpenings(openings);
+  document.getElementById('opening-name').value='';
+  document.getElementById('opening-note').value='';
+  document.getElementById('save-form').style.display='none';
+  renderOpenings(openings);
+}
+
+async function loadOpenings(){
+  try{
+    const r=await fetch(`${API}/openings`);
+    return await r.json();
+  } catch(e){ return []; }
+}
+
+async function saveOpenings(data){
+  await fetch(`${API}/openings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+}
+
+async function deleteOpening(id){
+  const openings=(await loadOpenings()).filter(o=>o.id!==id);
+  await saveOpenings(openings);
+  renderOpenings(openings);
+}
+
+function loadOpening(opening){
+  history=opening.history.map(h=>({board:[...h.board],player:h.player,pit:h.pit}));
+  if(history.length){
+    const last=history[history.length-1];
+    board=applyMove([...last.board],last.player,last.pit);
+    player=1-last.player;
+  } else {
+    board=[...INITIAL]; player=0;
+  }
+  renderBreadcrumb();
+  analyse();
+}
+
+function renderOpenings(openings){
+  const el=document.getElementById('openings-list');
+  if(!openings.length){
+    el.innerHTML='<p class="empty-state">No saved lines yet. Navigate to any position and press "Save this line…" to record it here.</p>';
+    return;
+  }
+  el.innerHTML='';
+  openings.forEach(o=>{
+    el.insertAdjacentHTML('beforeend',`
+      <div class="opening-item">
+        <div class="opening-name">${o.name}</div>
+        <div class="opening-moves">${o.line||'(start position)'}</div>
+        ${o.note?`<div class="opening-note">${o.note}</div>`:''}
+        <div class="opening-actions">
+          <button onclick='loadOpening(${JSON.stringify(o)})'>Load</button>
+          <button onclick="deleteOpening(${o.id})">Delete</button>
+        </div>
+      </div>`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+async function init(){
+  fetchStats();
+  setInterval(fetchStats, 10000);
+  renderBreadcrumb();
+  const openings=await loadOpenings();
+  renderOpenings(openings);
+  analyse();
+}
+
+init();
+</script>
+</body>
+</html>
